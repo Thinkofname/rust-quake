@@ -6,8 +6,8 @@ dependencies = [
  "cgmath 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger 0.4.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "error-chain 0.10.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "gfx 0.16.0 (git+https://github.com/Thinkofname/gfx.git?branch=quake-tmp-fix)",
- "gfx_window_glutin 0.17.0 (git+https://github.com/Thinkofname/gfx.git?branch=quake-tmp-fix)",
+ "gfx 0.16.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "gfx_window_glutin 0.17.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "glutin 0.9.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -266,19 +266,19 @@ dependencies = [
 
 [[package]]
 name = "gfx"
-version = "0.16.0"
-source = "git+https://github.com/Thinkofname/gfx.git?branch=quake-tmp-fix#537e76efe1ff5861a580fcb4025d458cbb93ee38"
+version = "0.16.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "derivative 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "draw_state 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "gfx_core 0.7.1 (git+https://github.com/Thinkofname/gfx.git?branch=quake-tmp-fix)",
+ "gfx_core 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.3.8 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "gfx_core"
 version = "0.7.1"
-source = "git+https://github.com/Thinkofname/gfx.git?branch=quake-tmp-fix#537e76efe1ff5861a580fcb4025d458cbb93ee38"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "bitflags 0.8.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "derivative 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -288,10 +288,10 @@ dependencies = [
 
 [[package]]
 name = "gfx_device_gl"
-version = "0.14.0"
-source = "git+https://github.com/Thinkofname/gfx.git?branch=quake-tmp-fix#537e76efe1ff5861a580fcb4025d458cbb93ee38"
+version = "0.14.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "gfx_core 0.7.1 (git+https://github.com/Thinkofname/gfx.git?branch=quake-tmp-fix)",
+ "gfx_core 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "gfx_gl 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.3.8 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -307,10 +307,10 @@ dependencies = [
 [[package]]
 name = "gfx_window_glutin"
 version = "0.17.0"
-source = "git+https://github.com/Thinkofname/gfx.git?branch=quake-tmp-fix#537e76efe1ff5861a580fcb4025d458cbb93ee38"
+source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "gfx_core 0.7.1 (git+https://github.com/Thinkofname/gfx.git?branch=quake-tmp-fix)",
- "gfx_device_gl 0.14.0 (git+https://github.com/Thinkofname/gfx.git?branch=quake-tmp-fix)",
+ "gfx_core 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "gfx_device_gl 0.14.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "glutin 0.9.2 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -809,11 +809,11 @@ dependencies = [
 "checksum fs2 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)" = "bcd414e5a1a979b931bb92f41b7a54106d3f6d2e6c253e9ce943b7cd468251ef"
 "checksum gcc 0.3.51 (registry+https://github.com/rust-lang/crates.io-index)" = "120d07f202dcc3f72859422563522b66fe6463a4c513df062874daad05f85f0a"
 "checksum gdi32-sys 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)" = "65256ec4dc2592e6f05bfc1ca3b956a4e0698aa90b1dff1f5687d55a5a3fd59a"
-"checksum gfx 0.16.0 (git+https://github.com/Thinkofname/gfx.git?branch=quake-tmp-fix)" = "<none>"
-"checksum gfx_core 0.7.1 (git+https://github.com/Thinkofname/gfx.git?branch=quake-tmp-fix)" = "<none>"
-"checksum gfx_device_gl 0.14.0 (git+https://github.com/Thinkofname/gfx.git?branch=quake-tmp-fix)" = "<none>"
+"checksum gfx 0.16.1 (registry+https://github.com/rust-lang/crates.io-index)" = "f2c432638dbd90e7e037fd874b05185adb042fd7efa956e93dc5cbf4dde1bd11"
+"checksum gfx_core 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)" = "257e2736f267a03e63405799b4892ffad12dbc9b1a2e293dea8528e28d564008"
+"checksum gfx_device_gl 0.14.1 (registry+https://github.com/rust-lang/crates.io-index)" = "d96af24822f5cae879203bf72a929883525edc7dce8db17b9eba931b9e41e7a8"
 "checksum gfx_gl 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)" = "f25c3866329ab91b92bfbc4d5e1d8172607e804564d90b8fbecb96cbc366845d"
-"checksum gfx_window_glutin 0.17.0 (git+https://github.com/Thinkofname/gfx.git?branch=quake-tmp-fix)" = "<none>"
+"checksum gfx_window_glutin 0.17.0 (registry+https://github.com/rust-lang/crates.io-index)" = "db898d6e30f5c826facd1e95944143eef988c362a249763f2dd8ab3c6fc01459"
 "checksum gl_generator 0.5.5 (registry+https://github.com/rust-lang/crates.io-index)" = "e7acbf2ba3d52e9e1ad96a84362129e9c1aa0af55ebfc86a91004e1b83eca61c"
 "checksum gleam 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)" = "bf887141f0c2a83eae026cbf3fba74f0a5cb0f01d20e5cdfcd8c4ad39295be1e"
 "checksum glutin 0.9.2 (registry+https://github.com/rust-lang/crates.io-index)" = "3cee1543cf7efce742534d31c024d8dd1aa0e8944d36ebdd7dfccdb80b84700d"
