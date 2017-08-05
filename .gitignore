@@ -1,0 +1,5 @@
+/target/
+**/*.rs.bk
+
+id1/PAK0.PAK
+id1/PAK1.PAK
