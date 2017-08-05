@@ -147,7 +147,7 @@ impl <R: gfx::Resources> Renderer<R> {
             pm.push(255);
         }
         let palette_map_sampler = factory.create_sampler(SamplerInfo::new(FilterMethod::Scale, WrapMode::Clamp));
-        let (_, palette_map) = factory.create_texture_immutable_u8::<format::Rgba8>(
+        let (_, palette_map) = factory.create_texture_immutable_u8::<format::Srgba8>(
             TKind::D2(16 as u16, 16 as u16, AaMode::Single),
             &[&pm],
         )?;
