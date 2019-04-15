@@ -391,6 +391,7 @@ impl <R> QMap<R>
         let texture_sampler = factory.create_sampler(SamplerInfo::new(FilterMethod::Scale, WrapMode::Clamp));
         let (_, texture) = factory.create_texture_immutable_u8::<(format::R8, format::Uint)>(
             TKind::D2(super::ATLAS_SIZE as u16, super::ATLAS_SIZE as u16, AaMode::Single),
+            gfx::texture::Mipmap::Provided,
             &[
                 &texture_data[0],
                 &texture_data[1],
@@ -400,6 +401,7 @@ impl <R> QMap<R>
         let texture_light_sampler = factory.create_sampler(SamplerInfo::new(FilterMethod::Bilinear, WrapMode::Clamp));
         let (_, texture_light) = factory.create_texture_immutable::<(format::R8, format::Unorm)>(
             TKind::D2(super::ATLAS_SIZE as u16, super::ATLAS_SIZE as u16, AaMode::Single),
+            gfx::texture::Mipmap::Provided,
             &[&light_map_data]
         )?;
 

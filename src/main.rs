@@ -22,9 +22,7 @@ use gfx::Device;
 use glutin::{
     Event,
     WindowEvent,
-    DeviceEvent,
     VirtualKeyCode,
-    GlContext,
     ElementState,
     MouseButton,
 };
@@ -35,17 +33,18 @@ use render::{
 };
 
 fn main() {
-    env_logger::init().unwrap();
+    env_logger::init();
     let pak = Rc::new(pak::PackFile::new("id1/PAK0.PAK").unwrap());
 
     let mut events_loop = glutin::EventsLoop::new();
     let builder = glutin::WindowBuilder::new()
         .with_title("RQuake".to_string())
-        .with_dimensions(640, 480);
+        .with_dimensions(glutin::dpi::LogicalSize::new(640.0, 480.0));
     let context = glutin::ContextBuilder::new();
 
     let (window, mut device, mut factory, main_color, main_depth) =
-        gfx_window_glutin::init::<ColorFormat, DepthFormat>(builder, context, &events_loop);
+        gfx_window_glutin::init::<ColorFormat, DepthFormat>(builder, context, &events_loop)
+        .unwrap();
 
     let start = bsp::BspFile::parse(
         &mut Cursor::new(pak.file("maps/start.bsp").unwrap())
@@ -71,16 +70,16 @@ fn main() {
         let delta =
             (diff.as_secs() * 1_000_000_000 + diff.subsec_nanos() as u64) as f32 / (1_000_000_000.0 / 60.0);
 
-        let (width, height) = window.get_inner_size().unwrap();
+        let (width, height): (f64, f64) = window.get_inner_size().unwrap().into();
         events_loop.poll_events(|event| {
             match event {
                 Event::WindowEvent{event: WindowEvent::KeyboardInput{input:key, ..}, ..} => {
                     if key.virtual_keycode == Some(VirtualKeyCode::Escape) && key.state == ElementState::Released {
                         lock_mouse = !lock_mouse;
                         if lock_mouse {
-                            window.set_cursor_state(glutin::CursorState::Hide).unwrap();
+                            window.window().hide_cursor(true);
                         } else {
-                            window.set_cursor_state(glutin::CursorState::Normal).unwrap();
+                            window.window().hide_cursor(false);
                         }
                     }
                     if key.virtual_keycode == Some(VirtualKeyCode::W) {
@@ -95,20 +94,21 @@ fn main() {
                     }
                 },
                 Event::WindowEvent{event: WindowEvent::MouseInput{state: ElementState::Pressed, button: MouseButton::Left, ..}, ..} => {
-                    window.set_cursor_state(glutin::CursorState::Hide).unwrap();
+                    window.window().hide_cursor(true);
                     lock_mouse = true;
                 },
-                Event::WindowEvent{event: WindowEvent::Closed, ..} => {
+                Event::WindowEvent{event: WindowEvent::CloseRequested, ..} => {
                     running = false;
                 },
-                Event::WindowEvent{event: WindowEvent::MouseMoved{position, ..}, ..} => {
+                Event::WindowEvent{event: WindowEvent::CursorMoved{position, ..}, ..} => {
                     if !lock_mouse {
                         return;
                     }
-                    let dx = (width as f64 * 0.5) - position.0;
-                    let dy = (height as f64 * 0.5) - position.1;
+                    let position: (f64, f64) = position.into();
+                    let dx = (width * 0.5) - position.0;
+                    let dy = (height * 0.5) - position.1;
 
-                    window.set_cursor_position(width as i32 / 2, height as i32 / 2).unwrap();
+                    window.window().set_cursor_position((width / 2.0, height / 2.0).into()).unwrap();
 
                     renderer.camera.rot_x -= cgmath::Rad(dy as f32 / 2000.0);
                     renderer.camera.rot_y -= cgmath::Rad(dx as f32 / 2000.0);

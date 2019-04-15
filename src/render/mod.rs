@@ -134,6 +134,7 @@ impl <R: gfx::Resources> Renderer<R> {
         let colour_map_sampler = factory.create_sampler(SamplerInfo::new(FilterMethod::Scale, WrapMode::Clamp));
         let (_, colour_map) = factory.create_texture_immutable_u8::<(format::R8, format::Uint)>(
             TKind::D2(256 as u16, 64 as u16, AaMode::Single),
+            gfx::texture::Mipmap::Provided,
             &[&colour_map],
         )?;
 
@@ -149,6 +150,7 @@ impl <R: gfx::Resources> Renderer<R> {
         let palette_map_sampler = factory.create_sampler(SamplerInfo::new(FilterMethod::Scale, WrapMode::Clamp));
         let (_, palette_map) = factory.create_texture_immutable_u8::<format::Srgba8>(
             TKind::D2(16 as u16, 16 as u16, AaMode::Single),
+            gfx::texture::Mipmap::Provided,
             &[&pm],
         )?;
 
@@ -218,7 +220,7 @@ impl <R: gfx::Resources> Renderer<R> {
 
     pub fn draw<D, F, C>(&mut self,
         delta: f32,
-        width: u32, height: u32,
+        width: f64, height: f64,
         device: &mut D, factory: &mut F, encoder: &mut gfx::Encoder<R, C>
     )
         where F: gfx::Factory<R>,
