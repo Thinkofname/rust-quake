@@ -5,8 +5,8 @@ use std::fs::File;
 use std::collections::HashMap;
 use std::cell::RefCell;
 
-use parse::*;
-use error;
+use crate::parse::*;
+use crate::error;
 
 pub struct PackFile {
     file: RefCell<File>,
@@ -51,7 +51,7 @@ impl PackFile {
 
         Ok(PackFile {
             file: RefCell::new(f),
-            entries: entries,
+            entries,
         })
     }
 

@@ -3,8 +3,8 @@ use std::io::{Read, Seek, SeekFrom};
 use std::ops::Range;
 use cgmath::Vector3;
 
-use error;
-use parse::*;
+use crate::error;
+use crate::parse::*;
 
 const SIZE_TEXTURE_INFO: usize = 4*6 + 4*2 + 4*2;
 const SIZE_VERTEX: usize = 4 * 3;

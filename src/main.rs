@@ -2,10 +2,20 @@ extern crate byteorder;
 extern crate cgmath;
 #[macro_use]
 extern crate error_chain;
-#[macro_use]
-extern crate gfx;
-extern crate gfx_window_glutin;
-extern crate glutin;
+
+#[cfg(feature = "dx11")]
+extern crate gfx_backend_dx11 as back;
+#[cfg(feature = "dx12")]
+extern crate gfx_backend_dx12 as back;
+#[cfg(feature = "gl")]
+extern crate gfx_backend_gl as back;
+#[cfg(feature = "metal")]
+extern crate gfx_backend_metal as back;
+#[cfg(feature = "vulkan")]
+extern crate gfx_backend_vulkan as back;
+extern crate gfx_hal as hal;
+
+extern crate winit;
 extern crate env_logger;
 
 #[macro_use]
@@ -14,45 +24,65 @@ pub mod pak;
 pub mod error;
 pub mod render;
 pub mod bsp;
+pub mod bitset;
 
-use std::time::Instant;
+use std::time::{Instant, Duration};
 use std::rc::Rc;
 use std::io::Cursor;
-use gfx::Device;
-use glutin::{
-    Event,
-    WindowEvent,
-    VirtualKeyCode,
-    ElementState,
-    MouseButton,
-};
 
-use render::{
-    ColorFormat,
-    DepthFormat,
+const WIDTH: u32 = 640;
+const HEIGHT: u32 = 480;
+
+use hal::{
+    Instance,
 };
+#[cfg(feature = "gl")]
+use hal::format::AsFormat as _;
 
 fn main() {
-    env_logger::init();
+    env_logger::init_from_env("QUAKE_LOG");
     let pak = Rc::new(pak::PackFile::new("id1/PAK0.PAK").unwrap());
 
-    let mut events_loop = glutin::EventsLoop::new();
-    let builder = glutin::WindowBuilder::new()
-        .with_title("RQuake".to_string())
-        .with_dimensions(glutin::dpi::LogicalSize::new(640.0, 480.0));
-    let context = glutin::ContextBuilder::new();
+    let wb = winit::WindowBuilder::new()
+        .with_dimensions(winit::dpi::LogicalSize::new(
+            WIDTH as _,
+            HEIGHT as _,
+        ))
+        .with_title("RQuake");
 
-    let (window, mut device, mut factory, main_color, main_depth) =
-        gfx_window_glutin::init::<ColorFormat, DepthFormat>(builder, context, &events_loop)
-        .unwrap();
+    let mut events_loop = winit::EventsLoop::new();
+
+    #[cfg(not(feature = "gl"))]
+    let (window, _instance, mut adapters, surface) = {
+        let window = wb.build(&events_loop).unwrap();
+        let instance = back::Instance::create("RQuake", 1);
+        let surface = instance.create_surface(&window);
+        let adapters = instance.enumerate_adapters();
+        (window, instance, adapters, surface)
+    };
+    #[cfg(feature = "gl")]
+    let (mut adapters, surface) = {
+        let window = {
+            let builder =
+                back::config_context(back::glutin::ContextBuilder::new(), hal::format::Rgba8Srgb::SELF, None)
+                    .with_vsync(true);
+            back::glutin::GlWindow::new(wb, builder, &events_loop).unwrap()
+        };
+
+        let surface = back::Surface::from_window(window);
+        let adapters = surface.enumerate_adapters();
+        (adapters, surface)
+    };
+
+    let adapter = adapters.remove(0);
 
     let start = bsp::BspFile::parse(
         &mut Cursor::new(pak.file("maps/start.bsp").unwrap())
     ).unwrap();
+
     let mut renderer = render::Renderer::new(
         pak.clone(), start,
-        &mut device, &mut factory,
-        main_color, main_depth,
+        adapter, surface,
     ).unwrap();
 
     let mut running = true;
@@ -60,9 +90,10 @@ fn main() {
     let mut lock_mouse = false;
     let mut level_idx = 0;
     let mut last_frame = Instant::now();
+    let mut display_size: (u32, u32) = (WIDTH, HEIGHT);
 
-    let mut encoder = factory.create_command_buffer().into();
-
+    let mut frames = 0;
+    let mut last_fps = Instant::now();
     while running {
         let start = Instant::now();
         let diff = last_frame.elapsed();
@@ -70,16 +101,24 @@ fn main() {
         let delta =
             (diff.as_secs() * 1_000_000_000 + diff.subsec_nanos() as u64) as f32 / (1_000_000_000.0 / 60.0);
 
-        let (width, height): (f64, f64) = window.get_inner_size().unwrap().into();
         events_loop.poll_events(|event| {
+            use winit::{Event, WindowEvent, VirtualKeyCode, ElementState, MouseButton};
+
+            #[cfg(feature = "gl")]
+            let window = renderer.surface.window().window();
+            #[cfg(not(feature = "gl"))]
+            let window = &window;
+
+            let (width, height): (f64, f64) = window.get_inner_size().unwrap().into();
+
             match event {
                 Event::WindowEvent{event: WindowEvent::KeyboardInput{input:key, ..}, ..} => {
                     if key.virtual_keycode == Some(VirtualKeyCode::Escape) && key.state == ElementState::Released {
                         lock_mouse = !lock_mouse;
                         if lock_mouse {
-                            window.window().hide_cursor(true);
+                            window.hide_cursor(true);
                         } else {
-                            window.window().hide_cursor(false);
+                            window.hide_cursor(false);
                         }
                     }
                     if key.virtual_keycode == Some(VirtualKeyCode::W) {
@@ -90,15 +129,18 @@ fn main() {
                         let level = bsp::BspFile::parse(
                             &mut Cursor::new(pak.file(&format!("maps/{}.bsp", LEVELS[level_idx])).unwrap())
                         ).unwrap();
-                        renderer.change_level(level, &mut device, &mut factory).unwrap();
+                        renderer.change_level(level).unwrap();
                     }
                 },
                 Event::WindowEvent{event: WindowEvent::MouseInput{state: ElementState::Pressed, button: MouseButton::Left, ..}, ..} => {
-                    window.window().hide_cursor(true);
+                    window.hide_cursor(true);
                     lock_mouse = true;
                 },
                 Event::WindowEvent{event: WindowEvent::CloseRequested, ..} => {
                     running = false;
+                },
+                Event::WindowEvent{event: WindowEvent::Resized(dims), ..} => {
+                    display_size = (dims.width as u32, dims.height as u32);
                 },
                 Event::WindowEvent{event: WindowEvent::CursorMoved{position, ..}, ..} => {
                     if !lock_mouse {
@@ -108,7 +150,7 @@ fn main() {
                     let dx = (width * 0.5) - position.0;
                     let dy = (height * 0.5) - position.1;
 
-                    window.window().set_cursor_position((width / 2.0, height / 2.0).into()).unwrap();
+                    window.set_cursor_position((width / 2.0, height / 2.0).into()).unwrap();
 
                     renderer.camera.rot_x -= cgmath::Rad(dy as f32 / 2000.0);
                     renderer.camera.rot_y -= cgmath::Rad(dx as f32 / 2000.0);
@@ -123,13 +165,14 @@ fn main() {
             renderer.camera.z -= 5.0 * (-renderer.camera.rot_x.0).sin() * delta;
         }
 
-        gfx_window_glutin::update_views(&window, &mut renderer.main_color, &mut renderer.main_depth);
+        renderer.draw(delta, display_size);
 
-        renderer.draw(delta, width, height, &mut device, &mut factory, &mut encoder);
-        encoder.flush(&mut device);
-
-        window.swap_buffers().unwrap();
-        device.cleanup();
+        frames += 1;
+        if last_fps.elapsed() > Duration::from_secs(1) {
+            println!("FPS: {}", frames);
+            frames = 0;
+            last_fps = Instant::now();
+        }
     }
 }
 

@@ -1,55 +1,95 @@
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::mem::size_of;
 use cgmath::prelude::*;
 use cgmath::Vector3;
-use gfx;
-use gfx::traits::FactoryExt;
-use gfx::texture::{
-    SamplerInfo,
-    FilterMethod,
-    WrapMode,
-    Kind as TKind,
-    AaMode,
-};
-use gfx::format;
-use gfx::memory;
-use gfx::handle::{
-    Texture,
-    Sampler,
-    RenderTargetView,
-    DepthStencilView,
-    ShaderResourceView,
-    Buffer
+
+use hal::{
+    Backend,
+    Device,
+    PhysicalDevice,
+    Surface,
+    SwapchainConfig,
+    Backbuffer,
+    Swapchain,
+    Adapter,
+    CommandPool,
+    pass::{
+        self,
+    },
+    image::{
+        self,
+    },
+    format::{
+        self,
+        ChannelType,
+        Swizzle,
+    },
+    pso::{
+        self,
+        PipelineStage,
+        EntryPoint,
+        GraphicsShaderSet,
+        Rasterizer,
+    },
+    window::{
+        Extent2D,
+    },
+    pool::{
+        self,
+    },
+    command::{
+        self,
+        CommandBuffer,
+    },
+    queue::{
+        self,
+        Submission,
+        family::QueueGroup,
+    },
+    buffer::{
+        self,
+    },
+    memory::{
+        self,
+    },
+    adapter::{
+        self,
+    },
 };
 
-use error;
+use crate::error;
 use super::atlas;
-use bsp;
+use crate::bsp;
+use super::alloc;
+use super::{BufferBundle, ImageBundle};
 
-pub struct QMap<R: gfx::Resources> {
-    map_buffer: Buffer<R, super::Vertex>,
-    map_sky_buffer: Buffer<R, super::Vertex>,
-    buffer_sky_box: Buffer<R, super::Vertex>,
+pub struct QMap<B: Backend> {
+    buffer: BufferBundle<B>,
+    buffer_count: usize,
+    buffer_sky: BufferBundle<B>,
+    buffer_sky_count: usize,
+    buffer_sky_box: BufferBundle<B>,
+    buffer_sky_box_count: usize,
 
-    texture_s: Sampler<R>,
-    texture: ShaderResourceView<R, u32>,
-    texture_light_s: Sampler<R>,
-    texture_light: ShaderResourceView<R, f32>,
+    pub texture: ImageBundle<B>,
+    pub texture_light: ImageBundle<B>,
 
     time_offset: f32,
 }
 
-impl <R> QMap<R>
-    where R: gfx::Resources
+impl <B> QMap<B>
+    where B: Backend,
 {
-    pub fn new<D, F>(
+    pub fn new(
         b: bsp::BspFile,
-        device: &mut D, factory: &mut F,
-    ) -> error::Result<QMap<R>>
-        where F: gfx::Factory<R>,
-              R: gfx::Resources,
-              D: gfx::Device,
+        adapter: &mut Adapter<B>,
+        device: &B::Device,
+        queue: &mut queue::CommandQueue<B, hal::Graphics>,
+        command_pool: &mut CommandPool<B, hal::Graphics>,
+        allocator: &mut alloc::GPUAlloc<B, impl alloc::RangeAlloc>,
+    ) -> error::Result<QMap<B>>
     {
         use std::f32;
         use std::cmp::{min, max};
@@ -380,103 +420,354 @@ impl <R> QMap<R>
             }
         }
 
-        let buffer = factory.create_vertex_buffer(&verts);
-        let buffer_sky = factory.create_vertex_buffer(&verts_sky);
+        let buffer = unsafe {
+            let staging_buffer = BufferBundle::new(
+                device,
+                allocator,
+                (size_of::<super::Vertex>() * verts.len()) as u64,
+                buffer::Usage::TRANSFER_SRC,
+                memory::Properties::CPU_VISIBLE
+            );
+
+            {
+                let mut data_target = device.acquire_mapping_writer(staging_buffer.memory.memory(), staging_buffer.memory.range.clone()).unwrap();
+                data_target[..verts.len()].copy_from_slice(&verts);
+                device.release_mapping_writer(data_target).unwrap();
+            }
+
+            let buffer = BufferBundle::new(
+                device,
+                allocator,
+                (size_of::<super::Vertex>() * verts.len()) as u64,
+                buffer::Usage::VERTEX | buffer::Usage::TRANSFER_DST,
+                memory::Properties::DEVICE_LOCAL
+            );
+
+            // Copy from staging to real buffer
+            let mut cmd = command_pool.acquire_command_buffer::<command::OneShot>();
+            cmd.begin();
+            cmd.copy_buffer(&staging_buffer.buffer, &buffer.buffer, Some(command::BufferCopy {
+                src: 0,
+                dst: 0,
+                size: (size_of::<super::Vertex>() * verts.len()) as u64,
+            }));
+            cmd.finish();
+
+            queue.submit_nosemaphores(Some(&cmd), None);
+            queue.wait_idle().unwrap();
+
+            command_pool.free(Some(cmd));
+            staging_buffer.destroy(device, allocator);
+
+            buffer
+        };
+
+        let buffer_sky = unsafe {
+            let staging_buffer = BufferBundle::new(
+                device,
+                allocator,
+                (size_of::<super::Vertex>() * verts_sky.len()) as u64,
+                buffer::Usage::TRANSFER_SRC,
+                memory::Properties::CPU_VISIBLE
+            );
+
+            {
+                let mut data_target = device.acquire_mapping_writer(staging_buffer.memory.memory(), staging_buffer.memory.range.clone()).unwrap();
+                data_target[..verts_sky.len()].copy_from_slice(&verts_sky);
+                device.release_mapping_writer(data_target).unwrap();
+            }
+
+            let buffer = BufferBundle::new(
+                device,
+                allocator,
+                (size_of::<super::Vertex>() * verts_sky.len()) as u64,
+                buffer::Usage::VERTEX | buffer::Usage::TRANSFER_DST,
+                memory::Properties::DEVICE_LOCAL
+            );
+
+            // Copy from staging to real buffer
+            let mut cmd = command_pool.acquire_command_buffer::<command::OneShot>();
+            cmd.begin();
+            cmd.copy_buffer(&staging_buffer.buffer, &buffer.buffer, Some(command::BufferCopy {
+                src: 0,
+                dst: 0,
+                size: (size_of::<super::Vertex>() * verts_sky.len()) as u64,
+            }));
+            cmd.finish();
+
+            queue.submit_nosemaphores(Some(&cmd), None);
+            queue.wait_idle().unwrap();
+
+            command_pool.free(Some(cmd));
+            staging_buffer.destroy(device, allocator);
+
+            buffer
+        };
+
 
         let sky_box_verts = sky_texture.map_or_else(Vec::new, |v| Self::gen_sky_box(
             &textures, v, sky_min + Vector3::new(-2000.0, -2000.0, 0.0), sky_max + Vector3::new(2000.0, 2000.0, 0.0),
         ));
-        let buffer_sky_box = factory.create_vertex_buffer(&sky_box_verts);
+        let buffer_sky_box = unsafe {
+            let staging_buffer = BufferBundle::new(
+                device,
+                allocator,
+                (size_of::<super::Vertex>() * sky_box_verts.len()) as u64,
+                buffer::Usage::TRANSFER_SRC,
+                memory::Properties::CPU_VISIBLE
+            );
 
-        let texture_sampler = factory.create_sampler(SamplerInfo::new(FilterMethod::Scale, WrapMode::Clamp));
-        let (_, texture) = factory.create_texture_immutable_u8::<(format::R8, format::Uint)>(
-            TKind::D2(super::ATLAS_SIZE as u16, super::ATLAS_SIZE as u16, AaMode::Single),
-            gfx::texture::Mipmap::Provided,
-            &[
-                &texture_data[0],
-                &texture_data[1],
-                &texture_data[2],
-            ]
-        )?;
-        let texture_light_sampler = factory.create_sampler(SamplerInfo::new(FilterMethod::Bilinear, WrapMode::Clamp));
-        let (_, texture_light) = factory.create_texture_immutable::<(format::R8, format::Unorm)>(
-            TKind::D2(super::ATLAS_SIZE as u16, super::ATLAS_SIZE as u16, AaMode::Single),
-            gfx::texture::Mipmap::Provided,
-            &[&light_map_data]
-        )?;
+            {
+                let mut data_target = device.acquire_mapping_writer(staging_buffer.memory.memory(), staging_buffer.memory.range.clone()).unwrap();
+                data_target[..sky_box_verts.len()].copy_from_slice(&sky_box_verts);
+                device.release_mapping_writer(data_target).unwrap();
+            }
+
+            let buffer = BufferBundle::new(
+                device,
+                allocator,
+                (size_of::<super::Vertex>() * sky_box_verts.len()) as u64,
+                buffer::Usage::VERTEX | buffer::Usage::TRANSFER_DST,
+                memory::Properties::DEVICE_LOCAL
+            );
+
+            // Copy from staging to real buffer
+            let mut cmd = command_pool.acquire_command_buffer::<command::OneShot>();
+            cmd.begin();
+            cmd.copy_buffer(&staging_buffer.buffer, &buffer.buffer, Some(command::BufferCopy {
+                src: 0,
+                dst: 0,
+                size: (size_of::<super::Vertex>() * sky_box_verts.len()) as u64,
+            }));
+            cmd.finish();
+
+            queue.submit_nosemaphores(Some(&cmd), None);
+            queue.wait_idle().unwrap();
+
+            command_pool.free(Some(cmd));
+            staging_buffer.destroy(device, allocator);
+
+            buffer
+        };
+
+        let (texture, texture_light) = unsafe {
+            let texture_light = ImageBundle::new(
+                device, allocator, super::ATLAS_SIZE, super::ATLAS_SIZE, 1,
+                format::Format::R8Unorm,
+                hal::image::Filter::Linear
+            );
+            let texture = ImageBundle::new(
+                device, allocator, super::ATLAS_SIZE, super::ATLAS_SIZE, 1,
+                format::Format::R8Unorm,
+                hal::image::Filter::Nearest
+            );
+
+            let staging_buffer_l = BufferBundle::new(
+                device,
+                allocator,
+                (texture_light.row_pitch * super::ATLAS_SIZE) as u64,
+                buffer::Usage::TRANSFER_SRC,
+                memory::Properties::CPU_VISIBLE
+            );
+            let staging_buffer = BufferBundle::new(
+                device,
+                allocator,
+                (texture.row_pitch * super::ATLAS_SIZE) as u64,
+                buffer::Usage::TRANSFER_SRC,
+                memory::Properties::CPU_VISIBLE
+            );
+
+            {
+                let mut data_target = device.acquire_mapping_writer(staging_buffer_l.memory.memory(), staging_buffer_l.memory.range.clone()).unwrap();
+                for y in 0 .. super::ATLAS_SIZE {
+                    let idx = y * super::ATLAS_SIZE;
+                    let data = &light_map_data[idx as usize .. (idx + super::ATLAS_SIZE) as usize];
+                    let d_idx = y * texture_light.row_pitch;
+                    data_target[d_idx as usize..(d_idx + super::ATLAS_SIZE) as usize].copy_from_slice(&data);
+                }
+                device.release_mapping_writer(data_target).unwrap();
+            }
+            {
+                let mut data_target = device.acquire_mapping_writer(staging_buffer.memory.memory(), staging_buffer.memory.range.clone()).unwrap();
+                for y in 0 .. super::ATLAS_SIZE {
+                    let idx = y * super::ATLAS_SIZE;
+                    let data = &texture_data[0][idx as usize .. (idx + super::ATLAS_SIZE) as usize];
+                    let d_idx = y * texture_light.row_pitch;
+                    data_target[d_idx as usize..(d_idx + super::ATLAS_SIZE) as usize].copy_from_slice(&data);
+                }
+                device.release_mapping_writer(data_target).unwrap();
+            }
+
+            // Copy from staging to image
+            let mut cmd = command_pool.acquire_command_buffer::<command::OneShot>();
+            cmd.begin();
+            cmd.pipeline_barrier(
+                pso::PipelineStage::TOP_OF_PIPE .. pso::PipelineStage::TRANSFER,
+                memory::Dependencies::empty(),
+                &[
+                    memory::Barrier::Image {
+                        states: (image::Access::empty(), image::Layout::Undefined)
+                            .. (image::Access::TRANSFER_WRITE, image::Layout::TransferDstOptimal),
+                        target: &*texture_light.image,
+                        families: None,
+                        range: image::SubresourceRange {
+                            aspects: format::Aspects::COLOR,
+                            levels: 0..1,
+                            layers: 0..1,
+                        },
+                    },
+                    memory::Barrier::Image {
+                        states: (image::Access::empty(), image::Layout::Undefined)
+                            .. (image::Access::TRANSFER_WRITE, image::Layout::TransferDstOptimal),
+                        target: &*texture.image,
+                        families: None,
+                        range: image::SubresourceRange {
+                            aspects: format::Aspects::COLOR,
+                            levels: 0..1,
+                            layers: 0..1,
+                        },
+                    },
+                ]
+            );
+            cmd.copy_buffer_to_image(
+                &staging_buffer_l.buffer,
+                &texture_light.image,
+                image::Layout::TransferDstOptimal,
+                &[command::BufferImageCopy {
+                    buffer_offset: 0,
+                    buffer_width: texture_light.row_pitch / 1,
+                    buffer_height: super::ATLAS_SIZE,
+                    image_layers: image::SubresourceLayers {
+                        aspects: format::Aspects::COLOR,
+                        level: 0,
+                        layers: 0..1,
+                    },
+                    image_offset: image::Offset { x: 0, y: 0, z: 0},
+                    image_extent: image::Extent {
+                        width: super::ATLAS_SIZE,
+                        height: super::ATLAS_SIZE,
+                        depth: 1,
+                    },
+                }],
+            );
+            cmd.copy_buffer_to_image(
+                &staging_buffer.buffer,
+                &texture.image,
+                image::Layout::TransferDstOptimal,
+                &[command::BufferImageCopy {
+                    buffer_offset: 0,
+                    buffer_width: texture.row_pitch / 1,
+                    buffer_height: super::ATLAS_SIZE,
+                    image_layers: image::SubresourceLayers {
+                        aspects: format::Aspects::COLOR,
+                        level: 0,
+                        layers: 0..1,
+                    },
+                    image_offset: image::Offset { x: 0, y: 0, z: 0},
+                    image_extent: image::Extent {
+                        width: super::ATLAS_SIZE,
+                        height: super::ATLAS_SIZE,
+                        depth: 1,
+                    },
+                }],
+            );
+            cmd.pipeline_barrier(
+                pso::PipelineStage::TRANSFER .. pso::PipelineStage::FRAGMENT_SHADER,
+                memory::Dependencies::empty(),
+                &[
+                    memory::Barrier::Image {
+                        states: (image::Access::TRANSFER_WRITE, image::Layout::TransferDstOptimal)
+                            .. (image::Access::SHADER_READ, image::Layout::ShaderReadOnlyOptimal),
+                        target: &*texture_light.image,
+                        families: None,
+                        range: image::SubresourceRange {
+                            aspects: format::Aspects::COLOR,
+                            levels: 0..1,
+                            layers: 0..1,
+                        },
+                    },
+                    memory::Barrier::Image {
+                        states: (image::Access::TRANSFER_WRITE, image::Layout::TransferDstOptimal)
+                            .. (image::Access::SHADER_READ, image::Layout::ShaderReadOnlyOptimal),
+                        target: &*texture.image,
+                        families: None,
+                        range: image::SubresourceRange {
+                            aspects: format::Aspects::COLOR,
+                            levels: 0..1,
+                            layers: 0..1,
+                        },
+                    },
+                ]
+            );
+            cmd.finish();
+
+            queue.submit_nosemaphores(Some(&cmd), None);
+            queue.wait_idle().unwrap();
+
+            command_pool.free(Some(cmd));
+            staging_buffer_l.destroy(device, allocator);
+            staging_buffer.destroy(device, allocator);
+
+            (texture, texture_light)
+        };
 
         Ok(QMap {
-            map_buffer: buffer,
-            map_sky_buffer: buffer_sky,
-            buffer_sky_box: buffer_sky_box,
-
-            texture: texture,
-            texture_s: texture_sampler,
-            texture_light: texture_light,
-            texture_light_s: texture_light_sampler,
+            buffer,
+            buffer_count: verts.len(),
+            buffer_sky,
+            buffer_sky_count: verts_sky.len(),
+            buffer_sky_box,
+            buffer_sky_box_count: sky_box_verts.len(),
+            texture,
+            texture_light,
 
             time_offset: 0.0,
         })
     }
 
-    pub fn draw<D, F, C>(
+    pub fn draw(
         &mut self,
         delta: f32,
-        device: &mut D, factory: &mut F, encoder: &mut gfx::Encoder<R, C>,
-        pso: &gfx::PipelineState<R, super::PMeta>,
-        pso_depth: &gfx::PipelineState<R, super::PDMeta>,
-        pso_sky: &gfx::PipelineState<R, super::PSMeta>,
-        matrix_buffer: &Buffer<R, super::Transform>,
-        colour_map: (ShaderResourceView<R, u32>, Sampler<R>),
-        palette_map: (ShaderResourceView<R, [f32; 4]>, Sampler<R>),
-        target: RenderTargetView<R, super::ColorFormat>,
-        target_depth: DepthStencilView<R, super::DepthFormat>
+        device: &B::Device,
+        layout: &B::PipelineLayout,
+        pipeline: &B::GraphicsPipeline,
+        depth_pipeline: &B::GraphicsPipeline,
+        sky_pipeline: &B::GraphicsPipeline,
+        encoder: &mut command::RenderPassInlineEncoder<B>,
     ) -> error::Result<()>
-        where F: gfx::Factory<R>,
-              R: gfx::Resources,
-              D: gfx::Device,
-              C: gfx::CommandBuffer<R>,
     {
         self.time_offset += delta * 0.0007;
-        // Render the skybox
-        let data = super::PSData {
-            vbuf: self.buffer_sky_box.clone(),
-            transform: matrix_buffer.clone(),
-            palette: palette_map.clone(),
-            colour_map: colour_map.clone(),
-            texture: (self.texture.clone(), self.texture_s.clone()),
-            texture_light: (self.texture_light.clone(), self.texture_light_s.clone()),
-            time_offset: self.time_offset,
-            out: target.clone(),
-            out_depth: target_depth.clone(),
-        };
-        encoder.draw(&gfx::Slice::new_match_vertex_buffer(&self.buffer_sky_box), pso_sky, &data);
-        encoder.clear_depth(&target_depth, 1.0);
 
-        // Fill the depth buffer with the sky areas.
-        // This cuts holes into the level to allow the sky
-        // to show as the sky box sometimes covers parts of the
-        // level in quake.
-        let data = super::PDData {
-            vbuf: self.map_sky_buffer.clone(),
-            transform: matrix_buffer.clone(),
-            out_depth: target_depth.clone(),
-        };
-        encoder.draw(&gfx::Slice::new_match_vertex_buffer(&self.map_sky_buffer), pso_depth, &data);
+        unsafe {
+            encoder.push_graphics_constants(layout, pso::ShaderStageFlags::FRAGMENT, 4*4*4, &[self.time_offset.to_bits()]);
+            // Skybox
+            encoder.bind_graphics_pipeline(sky_pipeline);
+            encoder.bind_vertex_buffers(0, Some((&*self.buffer_sky_box.buffer, 0)));
+            encoder.draw(0..self.buffer_sky_box_count as u32, 0..1);
 
-        // Render the level
-        let data = super::PData {
-            vbuf: self.map_buffer.clone(),
-            transform: matrix_buffer.clone(),
-            palette: palette_map,
-            colour_map: colour_map,
-            texture: (self.texture.clone(), self.texture_s.clone()),
-            texture_light: (self.texture_light.clone(), self.texture_light_s.clone()),
-            out: target,
-            out_depth: target_depth,
-        };
-        encoder.draw(&gfx::Slice::new_match_vertex_buffer(&self.map_buffer), pso, &data);
+            // Fill the depth buffer with the sky areas.
+            // This cuts holes into the level to allow the sky
+            // to show as the sky box sometimes covers parts of the
+            // level in quake.
+            encoder.bind_graphics_pipeline(depth_pipeline);
+            encoder.bind_vertex_buffers(0, Some((&*self.buffer_sky.buffer, 0)));
+            encoder.draw(0..self.buffer_sky_count as u32, 0..1);
+
+            // Render the level
+            encoder.bind_graphics_pipeline(pipeline);
+            encoder.bind_vertex_buffers(0, Some((&*self.buffer.buffer, 0)));
+            encoder.draw(0..self.buffer_count as u32, 0..1);
+        }
         Ok(())
+    }
+
+    pub unsafe fn destroy(self, device: &B::Device, allocator: &mut alloc::GPUAlloc<B, impl alloc::RangeAlloc>) {
+        self.buffer.destroy(device, allocator);
+        self.buffer_sky.destroy(device, allocator);
+        self.buffer_sky_box.destroy(device, allocator);
+
+        self.texture.destroy(device, allocator);
+        self.texture_light.destroy(device, allocator);
     }
 
     fn gen_sky_box(textures: &Vec<atlas::Rect>, tex: i32, min: Vector3<f32>, max: Vector3<f32>) -> Vec<super::Vertex> {
