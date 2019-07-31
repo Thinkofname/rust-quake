@@ -782,8 +782,8 @@ impl <B: Backend> Renderer<B> {
             device.create_pipeline_layout(
                 &descriptor_set_layouts,
                 &[
-                    (pso::ShaderStageFlags::VERTEX, 0..4*4*4),
-                    (pso::ShaderStageFlags::FRAGMENT, 4*4*4..4*4*4+4),
+                    (pso::ShaderStageFlags::VERTEX, 0..4*4),
+                    (pso::ShaderStageFlags::FRAGMENT, 4*4..4*4+4),
                 ],
             )
                 .unwrap()
