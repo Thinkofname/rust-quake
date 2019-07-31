@@ -141,10 +141,10 @@ impl <B: Backend> Renderer<B> {
         pak: Rc<PackFile>, level: bsp::BspFile,
         mut adapter: Adapter<B>,
         mut surface: B::Surface,
+        size: (f64, f64),
     ) -> error::Result<Renderer<B>>
     {
-        const WIDTH: u32 = 640;
-        const HEIGHT: u32 = 480;
+        let size = (size.0 as u32, size.1 as u32);
 
         let (device, mut queue_group) = adapter
             .open_with::<_, hal::Graphics>(1, |family| surface.supports_queue_family(family))
@@ -222,7 +222,10 @@ impl <B: Backend> Renderer<B> {
                 .expect("Can't create render pass")
         };
 
-        let (swap_chain, framebuffers, frame_images, depth_images) = Self::make_swapchain(&mut adapter, &device, &mut allocator, &mut surface, &render_pass, None, WIDTH, HEIGHT);
+        let (swap_chain, framebuffers, frame_images, depth_images) = Self::make_swapchain(
+            &mut adapter, &device, &mut allocator, &mut surface, &render_pass, None,
+            size.0, size.1,
+        );
 
         let num_framebuffers = framebuffers.len();
         let frames_in_flight = num_framebuffers + 1;
@@ -877,7 +880,7 @@ impl <B: Backend> Renderer<B> {
         Ok(Renderer {
             pak: pak,
             level: ManuallyDrop::new(level),
-            display_size: (WIDTH, HEIGHT),
+            display_size: size,
             frame: 0,
 
             camera: Camera {

@@ -53,25 +53,27 @@ fn main() {
     let mut events_loop = winit::EventsLoop::new();
 
     #[cfg(not(feature = "gl"))]
-    let (window, _instance, mut adapters, surface) = {
+    let (window, _instance, mut adapters, surface, size) = {
         let window = wb.build(&events_loop).unwrap();
         let instance = back::Instance::create("RQuake", 1);
         let surface = instance.create_surface(&window);
         let adapters = instance.enumerate_adapters();
-        (window, instance, adapters, surface)
+        let size = window.get_inner_size().map(Into::into).unwrap_or((WIDTH as f64, HEIGHT as f64));
+        (window, instance, adapters, surface, size)
     };
     #[cfg(feature = "gl")]
-    let (mut adapters, surface) = {
+    let (mut adapters, surface, size) = {
         let window = {
             let builder =
                 back::config_context(back::glutin::ContextBuilder::new(), hal::format::Rgba8Srgb::SELF, None)
                     .with_vsync(true);
-            back::glutin::GlWindow::new(wb, builder, &events_loop).unwrap()
+            builder.build_windowed(wb, &events_loop).unwrap()
         };
+        let size = window.get_inner_size().map(Into::into).unwrap_or((WIDTH as f64, HEIGHT as f64));
 
         let surface = back::Surface::from_window(window);
         let adapters = surface.enumerate_adapters();
-        (adapters, surface)
+        (adapters, surface, size)
     };
 
     let adapter = adapters.remove(0);
@@ -83,6 +85,7 @@ fn main() {
     let mut renderer = render::Renderer::new(
         pak.clone(), start,
         adapter, surface,
+        size,
     ).unwrap();
 
     let mut running = true;
