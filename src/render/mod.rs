@@ -20,7 +20,6 @@ use hal::{
     PhysicalDevice,
     Surface,
     SwapchainConfig,
-    Backbuffer,
     Swapchain,
     Adapter,
     CommandPool,
@@ -958,46 +957,43 @@ impl <B: Backend> Renderer<B> {
         // swap_config.present_mode = hal::PresentMode::Immediate;
         let extent = swap_config.extent.to_extent();
 
-        let (swap_chain, backbuffer) = unsafe { device.create_swapchain(surface, swap_config, previous) }
+        let (swap_chain, images) = unsafe { device.create_swapchain(surface, swap_config, previous) }
             .expect("Can't create swapchain");
 
-        let (frame_images, depth_images, framebuffers) = match backbuffer {
-            Backbuffer::Images(images) => {
-                let pairs = images
-                    .into_iter()
-                    .map(|image| unsafe {
-                        let rtv = device
-                            .create_image_view(
-                                &image,
-                                image::ViewKind::D2,
-                                format,
-                                Swizzle::NO,
-                                image::SubresourceRange {
-                                    aspects: format::Aspects::COLOR,
-                                    levels: 0..1,
-                                    layers: 0..1,
-                                },
-                            )
-                            .unwrap();
-                        (image, rtv)
-                    })
-                    .collect::<Vec<_>>();
-                let depth_images = pairs
-                    .iter()
-                    .map(|_| unsafe { DepthImage::new(device, allocator, width, height) })
-                    .collect::<Vec<_>>();;
-                let fbos = pairs
-                    .iter()
-                    .zip(&depth_images)
-                    .map(|(&(_, ref rtv), ref depth)| unsafe {
-                        device
-                            .create_framebuffer(render_pass, vec![rtv, &depth.image_view], extent)
-                            .unwrap()
-                    })
-                    .collect();
-                (pairs, depth_images, fbos)
-            }
-            Backbuffer::Framebuffer(fbo) => (Vec::new(), Vec::new(), vec![fbo]),
+        let (frame_images, depth_images, framebuffers) = {
+            let pairs = images
+                .into_iter()
+                .map(|image| unsafe {
+                    let rtv = device
+                        .create_image_view(
+                            &image,
+                            image::ViewKind::D2,
+                            format,
+                            Swizzle::NO,
+                            image::SubresourceRange {
+                                aspects: format::Aspects::COLOR,
+                                levels: 0..1,
+                                layers: 0..1,
+                            },
+                        )
+                        .unwrap();
+                    (image, rtv)
+                })
+                .collect::<Vec<_>>();
+            let depth_images = pairs
+                .iter()
+                .map(|_| unsafe { DepthImage::new(device, allocator, width, height) })
+                .collect::<Vec<_>>();;
+            let fbos = pairs
+                .iter()
+                .zip(&depth_images)
+                .map(|(&(_, ref rtv), ref depth)| unsafe {
+                    device
+                        .create_framebuffer(render_pass, vec![rtv, &depth.image_view], extent)
+                        .unwrap()
+                })
+                .collect();
+            (pairs, depth_images, fbos)
         };
         (swap_chain, framebuffers, frame_images, depth_images)
     }
@@ -1047,7 +1043,7 @@ impl <B: Backend> Renderer<B> {
         let swap_chain = gfx.swap_chain.as_mut().unwrap();
         let swap_image = unsafe {
             match swap_chain.acquire_image(!0, Some(&gfx.free_acquire_semaphore), None) {
-                Ok(i) => i as usize,
+                Ok(i) => i.0 as usize,
                 Err(_) => {
                     self.recreate_swapchain = true;
                     return;

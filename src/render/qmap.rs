@@ -11,7 +11,6 @@ use hal::{
     PhysicalDevice,
     Surface,
     SwapchainConfig,
-    Backbuffer,
     Swapchain,
     Adapter,
     CommandPool,
